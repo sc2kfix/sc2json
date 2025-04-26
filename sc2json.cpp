@@ -701,6 +701,89 @@ int main(int argc, char** argv) {
 				iConvertedChunks++;
 			}
 
+			else if (*(DWORD*)&sc2file[iChunkStart] == IFF_HEAD('T', 'E', 'X', 'T')) {
+				std::string strText((char*)&sc2file[iChunkStart + 12], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]) - 4);
+				if (*(DWORD*)&sc2file[iChunkStart + 8] == 0x00000080)
+					sc2json["SCEN"]["strDescriptionMenu"] = strText;
+				else if (*(DWORD*)&sc2file[iChunkStart + 8] == 0x00000081)
+					sc2json["SCEN"]["strDescriptionExtended"] = strText;
+				else {
+					char szChunkName[50] = { 0 };
+					sprintf_s(szChunkName, "TEXT(0x%08X)", *(DWORD*)&sc2file[iChunkStart + 8]);
+					printf("Skipping unknown TEXT chunk 0x%08X.\n", *(DWORD*)&sc2file[iChunkStart + 8]);
+					sc2json["sc2x"]["conversion"]["skipped_chunks"].append(szChunkName);
+					goto next;
+				}
+				iConvertedChunks++;
+			}
+
+			// TODO: decode and convert this to something actually useful
+			else if (*(DWORD*)&sc2file[iChunkStart] == IFF_HEAD('P', 'I', 'C', 'T')) {
+				sc2json["SCEN"]["bArrMenuImage"] = Base64Encode(&sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
+				iConvertedChunks++;
+			}
+
+			else if (*(DWORD*)&sc2file[iChunkStart] == IFF_HEAD('S', 'C', 'E', 'N')) {
+				// Skip the header
+				BYTE* pChunkSCEN = &sc2file[iChunkStart + 12];
+				int i = 0;
+
+				sc2json["SCEN"]["wScenarioDisasterID"] = ntohs(*(WORD*)&pChunkSCEN[i]);
+				i += 2;
+
+				// NOTE: this is a single byte in the original SCN format
+				sc2json["SCEN"]["wScenarioDisasterX"] = pChunkSCEN[i];
+				i++;
+
+				// NOTE: this is a single byte in the original SCN format
+				sc2json["SCEN"]["wScenarioDisasterY"] = pChunkSCEN[i];
+				i++;
+
+				sc2json["SCEN"]["wScenarioTimeLimit"] = ntohs(*(DWORD*)&pChunkSCEN[i]);
+				i += 2;
+
+				sc2json["SCEN"]["dwScenarioCitySize"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioResPopulation"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioComPopulation"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioIndPopulation"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioCashGoal"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioLandValueGoal"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioPollutionLimit"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioCrimeLimit"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["dwScenarioTrafficLimit"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
+				i += 4;
+
+				sc2json["SCEN"]["bScenarioBuildingGoal1"] = pChunkSCEN[i];
+				i++;
+
+				sc2json["SCEN"]["bScenarioBuildingGoal2"] = pChunkSCEN[i];
+				i++;
+
+				sc2json["SCEN"]["bScenarioBuildingGoal1Count"] = ntohs(*(WORD*)&pChunkSCEN[i]);
+				i += 2;
+
+				sc2json["SCEN"]["bScenarioBuildingGoal2Count"] = ntohs(*(WORD*)&pChunkSCEN[i]);
+				i += 2;
+
+				iConvertedChunks++;
+			}
+
 			else {
 				printf("Skipping unknown chunk\n");
 				char szChunkName[5] = { 0 };
@@ -708,6 +791,7 @@ int main(int argc, char** argv) {
 				sc2json["sc2x"]["conversion"]["skipped_chunks"].append(szChunkName);
 			}
 
+next:
 			i += iChunkSize;
 		}
 
