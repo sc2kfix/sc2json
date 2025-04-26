@@ -252,7 +252,14 @@ int main(int argc, char** argv) {
 
 	printf("Container size: %d bytes\n", ntohl(*(DWORD*)&sc2file[4]));
 
-	std::string strOutFilename = std::regex_replace(argv[1], std::regex("\.[Ss][Cc]2$"), ".sc2x");
+	std::string strOutFilename = std::regex_replace(argv[1], std::regex("\.[Ss][Cc][Nn]$"), ".scnx");
+	if (strOutFilename == argv[1]) {
+		printf("Not a scenario, trying .sc2.\n");
+		strOutFilename = std::regex_replace(argv[1], std::regex("\.[Ss][Cc]2$"), ".sc2x");
+
+		if (strOutFilename == argv[1])
+			BAILOUT("whatever you passed me wasn't an .sc2 or .scn, you goober\n");
+	}
 	wxFFileOutputStream fileStream(strOutFilename);
 	wxZipOutputStream zipStream(fileStream);
 
