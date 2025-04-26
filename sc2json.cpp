@@ -1,7 +1,12 @@
-// sc2kfix sc2json.cpp: test for reading .sc2 files and turning them into JSON
+// sc2kfix sc2json.cpp: test for reading .sc2 files and turning them into JSON/ZIP
 // (c) 2025 sc2kfix project (https://sc2kfix.net) - released under the MIT license
 
-#undef UNICODE
+// This particular file has to be UNICODE for wxWidgets
+//#undef UNICODE
+
+// This is also something for wxWidgets
+#define _CRT_SECURE_NO_WARNINGS
+
 #define WIN32_LEAN_AND_MEAN
 #include <iostream>
 #include <fstream>
@@ -12,7 +17,12 @@
 #include "json-small.hpp"
 #include "deflate.h"
 
+#include <wx/wfstream.h>
+#include <wx/zipstrm.h>
+
 #define IFF_HEAD(a, b, c, d) ((DWORD)d << 24 | (DWORD)c << 16 | (DWORD)b << 8 | (DWORD)a)
+#define DWORD_NTOHL_CHECK(x) (bBigEndian ? ntohl(x) : x)
+#define DWORD_HTONL_CHECK(x) (bBigEndian ? htonl(x) : x)
 
 #define USE_DEFLATE TRUE
 
@@ -189,18 +199,34 @@ int MaxisDecompress(BYTE* pBuffer, size_t iBufSize, BYTE* pCompressedData, int i
 json::JSON EncodeDWORDArray(DWORD* dwArray, size_t iCount, BOOL bBigEndian) {
 	json::JSON jsonArray = json::Array();
 	for (int i = 0; i < iCount; i++) {
-		if (bBigEndian)
-			jsonArray.append<DWORD>(ntohl(dwArray[i]));
-		else
-			jsonArray.append<DWORD>(dwArray[i]);
+		jsonArray.append<DWORD>(DWORD_NTOHL_CHECK(dwArray[i]));
 	}
 	return jsonArray;
+}
+
+json::JSON EncodeBudgetArray(DWORD* dwBudgetArray, BOOL bBigEndian) {
+	json::JSON jsonObject = json::Object();
+	jsonObject["iCurrentCosts"] = DWORD_NTOHL_CHECK(dwBudgetArray[0]);
+	jsonObject["iFundingPercent"] = DWORD_NTOHL_CHECK(dwBudgetArray[1]);
+	jsonObject["iYearToDateCost"] = DWORD_NTOHL_CHECK(dwBudgetArray[2]);
+	
+	jsonObject["iCountMonth"] = json::Array<DWORD>(
+		DWORD_NTOHL_CHECK(dwBudgetArray[3]), DWORD_NTOHL_CHECK(dwBudgetArray[5]), DWORD_NTOHL_CHECK(dwBudgetArray[7]),
+		DWORD_NTOHL_CHECK(dwBudgetArray[9]), DWORD_NTOHL_CHECK(dwBudgetArray[11]), DWORD_NTOHL_CHECK(dwBudgetArray[13]),
+		DWORD_NTOHL_CHECK(dwBudgetArray[15]), DWORD_NTOHL_CHECK(dwBudgetArray[17]), DWORD_NTOHL_CHECK(dwBudgetArray[19]),
+		DWORD_NTOHL_CHECK(dwBudgetArray[21]), DWORD_NTOHL_CHECK(dwBudgetArray[23]), DWORD_NTOHL_CHECK(dwBudgetArray[25]));
+	jsonObject["iFundMonth"] = json::Array<DWORD>(
+		DWORD_NTOHL_CHECK(dwBudgetArray[4]), DWORD_NTOHL_CHECK(dwBudgetArray[6]), DWORD_NTOHL_CHECK(dwBudgetArray[8]),
+		DWORD_NTOHL_CHECK(dwBudgetArray[10]), DWORD_NTOHL_CHECK(dwBudgetArray[12]), DWORD_NTOHL_CHECK(dwBudgetArray[14]),
+		DWORD_NTOHL_CHECK(dwBudgetArray[16]), DWORD_NTOHL_CHECK(dwBudgetArray[18]), DWORD_NTOHL_CHECK(dwBudgetArray[20]),
+		DWORD_NTOHL_CHECK(dwBudgetArray[22]), DWORD_NTOHL_CHECK(dwBudgetArray[24]), DWORD_NTOHL_CHECK(dwBudgetArray[26]));
+	return jsonObject;
 }
 
 // Scary function! Overflows abound! Be careful!
 void DecodeDWORDArray(DWORD* dwArray, json::JSON jsonArray, size_t iCount, BOOL bBigEndian) {
 	for (int i = 0; i < iCount; i++)
-		dwArray[i] = (bBigEndian ? htonl(jsonArray[i].ToInt()) : jsonArray[i].ToInt());
+		dwArray[i] = DWORD_HTONL_CHECK(jsonArray[i].ToInt());
 }
 
 int main(int argc, char** argv) {
@@ -225,6 +251,12 @@ int main(int argc, char** argv) {
 		BAILOUT("pass me an actual friggin .sc2 file you goober\n");
 
 	printf("Container size: %d bytes\n", ntohl(*(DWORD*)&sc2file[4]));
+
+	std::string strOutFilename = std::regex_replace(argv[1], std::regex("\.[Ss][Cc]2$"), ".sc2x");
+	wxFFileOutputStream fileStream(strOutFilename);
+	wxZipOutputStream zipStream(fileStream);
+
+	printf("Writing to %s...\n\n", strOutFilename.c_str());
 
 	// TIME TO DIE
 	json::JSON sc2json = json::Object();
@@ -361,6 +393,7 @@ int main(int argc, char** argv) {
 				sc2json["MISC"]["dwCityBondData"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 50, TRUE);
 				i += 4 * 50;
 
+				// TODO: Encode as arrays of useful JSON
 				sc2json["MISC"]["stNeighborCities"]["south"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 4, TRUE);
 				i += 4 * 4;
 				sc2json["MISC"]["stNeighborCities"]["west"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 4, TRUE);
@@ -376,52 +409,52 @@ int main(int argc, char** argv) {
 				sc2json["MISC"]["wCityInventionYears"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 17, TRUE);
 				i += 4 * 17;
 
-				sc2json["MISC"]["dwArrResidentialTaxTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrResidentialTax"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrCommercialTaxTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrCommercialTax"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrIndustrialTaxTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrIndustrialTax"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrOrdinanceBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrOrdinance"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrBondBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrBond"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrPoliceBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrPolice"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrFireBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrFire"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrHealthcareBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrHealthcare"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrEducationSchoolBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrEducationSchool"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrEducationCollegeBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrEducationCollege"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrTransitRoadBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrTransitRoad"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrTransitHighwayBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrTransitHighway"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrTransitBridgeBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrTransitBridge"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrTransitRailBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrTransitRail"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrTransitSubwayBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrTransitSubway"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
-				sc2json["MISC"]["dwArrTransitTunnelBudgetTable"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 27, TRUE);
+				sc2json["MISC"]["dwBudgetArrTransitTunnel"] = EncodeBudgetArray((DWORD*)&pChunkMISC[i], TRUE);
 				i += 4 * 27;
 
 				sc2json["MISC"]["dwYearEndFlag"] = ntohl(*(DWORD*)&pChunkMISC[i]);
@@ -439,9 +472,11 @@ int main(int argc, char** argv) {
 				sc2json["MISC"]["bMiltaryBaseType"] = ntohl(*(DWORD*)&pChunkMISC[i]);
 				i += 4;
 
+				// TODO: Encode as arrays of useful JSON
 				sc2json["MISC"]["dwArrNewspaperTable1"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 30, TRUE);
 				i += 4 * 30;
 
+				// TODO: Encode as arrays of useful JSON
 				sc2json["MISC"]["dwArrNewspaperTable2"] = EncodeDWORDArray((DWORD*)&pChunkMISC[i], 54, TRUE);
 				i += 4 * 54;
 
@@ -538,18 +573,8 @@ int main(int argc, char** argv) {
 			}
 
 			else if (*(DWORD*)&sc2file[iChunkStart] == IFF_HEAD('A', 'L', 'T', 'M')) {
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(32768));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, &sc2file[iChunkStart + 8], sdefl_bound(32768), SDEFL_LVL_DEF);
-					sc2json["ALTM"]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", "ALTM", iDeflateSize);
-				}
-				else
-					sc2json["ALTM"]["data"] = Base64Encode(&sc2file[iChunkStart + 8], 32768);
-				sc2json["ALTM"]["compression"] = (USE_DEFLATE ? "deflate" : "none");
+				zipStream.PutNextEntry("ALTM");
+				zipStream.Write(&sc2file[iChunkStart + 8], 32768);
 				iConvertedChunks++;
 			}
 
@@ -567,18 +592,8 @@ int main(int argc, char** argv) {
 					BAILOUT("Couldn't malloc 16384 bytes for %s.", strIFFHead.c_str());
 
 				MaxisDecompress(pChunkData, 16384, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-				sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(16384));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(16384), SDEFL_LVL_DEF);
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-				}
-				else
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 16384);
+				zipStream.PutNextEntry(strIFFHead);
+				zipStream.Write(pChunkData, 16384);
 				free(pChunkData);
 				iConvertedChunks++;
 			}
@@ -592,18 +607,8 @@ int main(int argc, char** argv) {
 					BAILOUT("Couldn't malloc 6400 bytes for XLAB.");
 
 				MaxisDecompress(pChunkData, 6400, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-				sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(6400));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(6400), SDEFL_LVL_DEF);
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-				}
-				else
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 6400);
+				zipStream.PutNextEntry(strIFFHead);
+				zipStream.Write(pChunkData, 6400);
 				free(pChunkData);
 				iConvertedChunks++;
 			}
@@ -620,19 +625,8 @@ int main(int argc, char** argv) {
 						BAILOUT("Couldn't malloc 4096 bytes for %s.", strIFFHead.c_str());
 
 					MaxisDecompress(pChunkData, 4096, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-
-					sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-					if (USE_DEFLATE) {
-						struct sdefl stDeflate = { 0 };
-						BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(4096));
-						if (!pChunkDeflated)
-							BAILOUT("FUCK!");
-						size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(4096), SDEFL_LVL_DEF);
-						sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-						printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-					}
-					else
-						sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 4096);
+					zipStream.PutNextEntry(strIFFHead);
+					zipStream.Write(pChunkData, 4096);
 					free(pChunkData);
 					iConvertedChunks++;
 			}
@@ -646,19 +640,8 @@ int main(int argc, char** argv) {
 					BAILOUT("Couldn't malloc 3328 bytes for XGRP.");
 
 				MaxisDecompress(pChunkData, 3328, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-
-				sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(3328));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(3328), SDEFL_LVL_DEF);
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-				}
-				else
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 3328);
+				zipStream.PutNextEntry(strIFFHead);
+				zipStream.Write(pChunkData, 3328);
 				free(pChunkData);
 				iConvertedChunks++;
 			}
@@ -672,19 +655,8 @@ int main(int argc, char** argv) {
 					BAILOUT("Couldn't malloc 1200 bytes for XMIC.");
 
 				MaxisDecompress(pChunkData, 1200, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-
-				sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(1200));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(1200), SDEFL_LVL_DEF);
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-				}
-				else
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 1200);
+				zipStream.PutNextEntry(strIFFHead);
+				zipStream.Write(pChunkData, 1200);
 				free(pChunkData);
 				iConvertedChunks++;
 			}
@@ -701,18 +673,8 @@ int main(int argc, char** argv) {
 					BAILOUT("Couldn't malloc 1024 bytes for %s.", strIFFHead.c_str());
 
 				MaxisDecompress(pChunkData, 1024, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-
-				sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(1024));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(1024), SDEFL_LVL_DEF);
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-				} else
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 1024);
+				zipStream.PutNextEntry(strIFFHead);
+				zipStream.Write(pChunkData, 1024);
 				free(pChunkData);
 				iConvertedChunks++;
 			}
@@ -726,22 +688,11 @@ int main(int argc, char** argv) {
 					BAILOUT("Couldn't malloc 480 bytes for XTHG.");
 
 				MaxisDecompress(pChunkData, 480, &sc2file[iChunkStart + 8], ntohl(*(DWORD*)&sc2file[iChunkStart + 4]));
-
-				sc2json[strIFFHead]["compression"] = (USE_DEFLATE ? "deflate" : "none");
-				if (USE_DEFLATE) {
-					struct sdefl stDeflate = { 0 };
-					BYTE* pChunkDeflated = (BYTE*)malloc(sdefl_bound(480));
-					if (!pChunkDeflated)
-						BAILOUT("FUCK!");
-					size_t iDeflateSize = sdeflate(&stDeflate, pChunkDeflated, pChunkData, sdefl_bound(480), SDEFL_LVL_DEF);
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkDeflated, iDeflateSize);
-					printf("Deflated %s to %d bytes.\n", strIFFHead.c_str(), iDeflateSize);
-				}
-				else
-					sc2json[strIFFHead]["data"] = Base64Encode(pChunkData, 480);
+				zipStream.PutNextEntry(strIFFHead);
+				zipStream.Write(pChunkData, 480);
 				free(pChunkData);
 				iConvertedChunks++;
-				}
+			}
 
 			else {
 				printf("Skipping unknown chunk\n");
@@ -756,15 +707,18 @@ int main(int argc, char** argv) {
 		iChunkStart += 8;
 	} while (iChunkStart + iChunkSize < sc2size);
 
-	sc2json["sc2x"]["meta"]["creator"] = "sc2json v0.3-dev";
+	sc2json["sc2x"]["meta"]["creator"] = "sc2json v0.4-dev";
 	sc2json["sc2x"]["meta"]["timestamp"] = time(NULL);
 	sc2json["sc2x"]["conversion"]["chunks"] = iConvertedChunks;
 
-	std::string strOutFilename = std::regex_replace(argv[1], std::regex("\.[Ss][Cc]2$"), ".sc2x");
-	printf("Writing to %s...", strOutFilename.c_str());
-	std::ofstream outfile(strOutFilename, std::ios::trunc);
-	outfile << sc2json;
-	printf(" done!\n");
+	// Write the JSON out to the ZIP
+	std::string strJSON = sc2json.dump();
+	zipStream.PutNextEntry("MISC.json");
+	zipStream.Write(strJSON.c_str(), strJSON.length());
+
+	// NOTE: This is where mod data would get saved in the actual save function.
+
+	printf("Done writing!\n");
 	system("pause");
 	return 0;
 }
