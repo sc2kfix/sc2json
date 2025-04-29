@@ -760,6 +760,12 @@ int main(int argc, char** argv) {
 				sc2json["SCEN"]["dwScenarioLandValueGoal"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
 				i += 4;
 
+				sc2json["SCEN"]["wScenarioLEGoal"] = ntohs(*(WORD*)&pChunkSCEN[i]);
+				i += 2;
+
+				sc2json["SCEN"]["wScenarioEQGoal"] = ntohs(*(WORD*)&pChunkSCEN[i]);
+				i += 2;
+
 				sc2json["SCEN"]["dwScenarioPollutionLimit"] = ntohl(*(DWORD*)&pChunkSCEN[i]);
 				i += 4;
 
