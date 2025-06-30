@@ -21,10 +21,18 @@
 #include <wx/zipstrm.h>
 
 enum {
-	SC2X_VERSION_UNKNOWN = 0,
-	SC2X_VERSION_JSONPROTO = 1,
-	SC2X_VERSION_SC2KFIX = 1000,
-	SC2X_VERSION_OC2K_PROTO = 2000
+	SC2X_SIZE_VANILLA		= 128,
+	SC2X_SIZE_SMALL			= 128,
+	SC2X_SIZE_MEDIUM		= 256,
+	SC2X_SIZE_LARGE			= 512,
+	SC2X_SIZE_EXTRA_LARGE	= 1024		// unlikely to ever be used, but added for completion
+};
+
+enum {
+	SC2X_VERSION_UNKNOWN	= 0,
+	SC2X_VERSION_JSONPROTO	= 1,
+	SC2X_VERSION_SC2KFIX	= 1000,
+	SC2X_VERSION_OC2K_PROTO	= 2000
 };
 
 #define IFF_HEAD(a, b, c, d) ((DWORD)d << 24 | (DWORD)c << 16 | (DWORD)b << 8 | (DWORD)a)
@@ -814,6 +822,7 @@ next:
 	sc2json["sc2x"]["meta"]["creator"] = "sc2json v0.4-dev";
 	sc2json["sc2x"]["meta"]["timestamp"] = time(NULL);
 	sc2json["sc2x"]["meta"]["version"] = (int)SC2X_VERSION_JSONPROTO;
+	sc2json["sc2x"]["meta"]["dimensions"] = (int)SC2X_SIZE_VANILLA;
 	sc2json["sc2x"]["conversion"]["chunks"] = iConvertedChunks;
 
 	// Write the JSON out to the ZIP
