@@ -20,6 +20,13 @@
 #include <wx/wfstream.h>
 #include <wx/zipstrm.h>
 
+enum {
+	SC2X_VERSION_UNKNOWN = 0,
+	SC2X_VERSION_JSONPROTO = 1,
+	SC2X_VERSION_SC2KFIX = 10,
+	SC2X_VERSION_OC2K_PROTO = 20
+};
+
 #define IFF_HEAD(a, b, c, d) ((DWORD)d << 24 | (DWORD)c << 16 | (DWORD)b << 8 | (DWORD)a)
 #define DWORD_NTOHL_CHECK(x) (bBigEndian ? ntohl(x) : x)
 #define DWORD_HTONL_CHECK(x) (bBigEndian ? htonl(x) : x)
@@ -806,6 +813,7 @@ next:
 
 	sc2json["sc2x"]["meta"]["creator"] = "sc2json v0.4-dev";
 	sc2json["sc2x"]["meta"]["timestamp"] = time(NULL);
+	sc2json["sc2x"]["meta"]["version"] = (int)SC2X_VERSION_JSONPROTO;
 	sc2json["sc2x"]["conversion"]["chunks"] = iConvertedChunks;
 
 	// Write the JSON out to the ZIP
