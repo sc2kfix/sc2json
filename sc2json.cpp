@@ -491,7 +491,7 @@ int main(int argc, char** argv) {
 				sc2json["MISC"]["bCityHasRiver"] = ntohl(*(DWORD*)&pChunkMISC[i]);
 				i += 4;
 
-				sc2json["MISC"]["bMiltaryBaseType"] = ntohl(*(DWORD*)&pChunkMISC[i]);
+				sc2json["MISC"]["bMilitaryBaseType"] = ntohl(*(DWORD*)&pChunkMISC[i]);
 				i += 4;
 
 				// TODO: Encode as arrays of useful JSON
